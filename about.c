@@ -4,21 +4,23 @@
 #include "about.h"
 #include "resources.h"
 
-static LRESULT CALLBACK DlgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
+static INT_PTR CALLBACK DlgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
   switch (msg) {
   case WM_COMMAND:
     switch (LOWORD(wParam)) {
     case IDC_ABOUT_CLOSE:
+    case IDCANCEL:
+    case IDCLOSE:
       EndDialog(hwnd, 0);
-      break;
+      return TRUE;
     }
     break;
   }
-  return 0;
+  return FALSE;
 }
 
 void about_show(HINSTANCE h_inst, HWND hwnd)
 {
-  DialogBoxW(h_inst, MAKEINTRESOURCEW(IDD_ABOUT), hwnd, DlgProc);
+  DialogBox(h_inst, MAKEINTRESOURCE(IDD_ABOUT), hwnd, DlgProc);
 }
