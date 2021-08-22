@@ -1,4 +1,4 @@
-# win-remote-control
+# ![Icon](icon.ico) win-remote-control
 
 This is a small Windows program that sits on the systray accepting network connections on TCP port `5555`.
 Incoming connections with key names cause keyboard events to be sent to Windows.
