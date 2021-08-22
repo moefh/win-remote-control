@@ -3,7 +3,7 @@
 This is a small Windows program that sits on the systray accepting network connections on TCP port `5555`.
 Incoming connections with key names cause keyboard events to be sent to Windows.
 
-[Netcat](https://en.wikipedia.org/wiki/Netcat) is an easy way to do send keys. If the IP address of
+[Netcat](https://en.wikipedia.org/wiki/Netcat) is an easy way to send keys. If the IP address of
 your Windows PC is `192.179.1.20`, running
 
     echo "ALT+F4" | nc 192.168.1.20 5555
@@ -21,7 +21,7 @@ Single keys are sent with alternating press and release inputs, so sending "`A B
 - press `B`
 - release `B`
 
-Key combinations (i.e., keys joined by `+`) are all pressed one after another and then released in the reverse order:
+Key combinations (i.e., keys joined by `+`) are all pressed one after another and then released in the reverse order, so
 sending "`ALT+F4 ENTER`" will generate the sequence
 - press `ALT`
 - press `F4`
@@ -32,7 +32,7 @@ sending "`ALT+F4 ENTER`" will generate the sequence
 
 ## Compilation
 
-To compile under MinGW-w64, just
+To compile under MinGW-w64:
 
     $ git clone https://github.com/moefh/win-remote-control
     $ cd win-remote-control
@@ -40,7 +40,7 @@ To compile under MinGW-w64, just
 
 ## Limitations
 
-- TCP port `5555` is hard-coded.
-- There's a limit of 50 keys on a connection (multiple connections must be used to send more keys).
-- Some key names (like "`COLON`") are specific to US keyboards and may have different effects if Windows has the keyboard configured for a different language.
-- No attempt at protecting from malicious or ill-behaved network clients is made. A client that connects and doesn't send any data will stop all incoming connections.
+- The TCP port `5555` is hard-coded.
+- There's a limit of 50 keys per connection.
+- Some key names (like "`COLON`") are specific to US keyboards and may have different effects if Windows has the keyboard configured for a different language (see [this page](https://docs.microsoft.com/en-us/windows/win32/inputdev/virtual-key-codes)).
+- No attempt at protecting from malicious or ill-behaved network clients is made. For example, a client that connects and never sends any data will prevent other connections.
