@@ -8,8 +8,8 @@ your Windows PC is `192.179.1.20`, running
 
     echo "ALT+F4" | nc 192.168.1.20 5555
 
-somewhere on your network will send `ALT+F4` to the active window. Key sequences are supported
-too, so if you leave a `notepad` window focused and
+somewhere on your network will tell `win-remote-control` to send `ALT+F4` to the active window. Key
+sequences are supported too, so if you leave a `notepad` window focused and
 
     echo "SHIFT+H E L L O COMMA SPACE W O R L D SHIFT+1" | nc 192.168.1.20
 
