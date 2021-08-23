@@ -40,7 +40,5 @@ To compile under MinGW-w64:
 
 ## Limitations
 
-- The TCP port `5555` is hard-coded.
 - There's a limit of 50 keys per connection.
 - Some key names (like "`COLON`") are specific to US keyboards and may have different effects if Windows has the keyboard configured for a different language (see [this page](https://docs.microsoft.com/en-us/windows/win32/inputdev/virtual-key-codes)).
-- The network code is very simplistic and assumes total cooperation from the client, there's no attempt at protecting from malicious or ill-behaved network clients. For example, a client that connects and never sends any data will block other connections.
