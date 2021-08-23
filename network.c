@@ -17,14 +17,15 @@
 #define CLOSEEVENT(ev) do { if ((ev) != WSA_INVALID_EVENT) { WSACloseEvent(ev); (ev) = WSA_INVALID_EVENT; }} while (0)
 
 #define MAX_CONNECTIONS  5
-#define MAX_EVENTS       (2+MAX_CONNECTIONS)
+#define MAX_SOCKETS      (1+MAX_CONNECTIONS)
 
 struct SOCK_INFO {
   WSAOVERLAPPED *overlap;
   SOCKET sock;
   SOCKET accept_sock;
-  char buf[1024];
   WSABUF wsa_buf;
+  char buf[1024];
+  int buf_len;
 };
 
 static LPFN_ACCEPTEX pAcceptEx;
@@ -32,10 +33,10 @@ static LPFN_ACCEPTEX pAcceptEx;
 static fn_msg_proc msg_proc_func;
 static int server_port;
 
-static int num_events;
-static WSAEVENT events[MAX_EVENTS];
-static struct SOCK_INFO socks[MAX_EVENTS];
-static char accept_buffer[2*sizeof(SOCKADDR_STORAGE) + 32];
+static int num_sockets;
+static WSAEVENT events[MAX_SOCKETS+1];
+static struct SOCK_INFO socks[MAX_SOCKETS];
+static WSAEVENT reconfig_event;
 
 static int get_acceptex_ptr(int sock)
 {
@@ -83,57 +84,62 @@ static int create_listen_socket(void)
 
 static void start_accept(int listen_sock)
 {
-  events[1] = WSACreateEvent();
-  socks[1].sock = listen_sock;
-  socks[1].accept_sock = WSASocket(AF_INET, SOCK_STREAM, 0, NULL, 0, WSA_FLAG_OVERLAPPED);
-  socks[1].overlap = XMALLOC(sizeof(WSAOVERLAPPED));
-  memset(socks[1].overlap, 0, sizeof(WSAOVERLAPPED));
-  socks[1].overlap->hEvent = events[1];
-  if (events[1] == WSA_INVALID_EVENT) {
+  events[0] = WSACreateEvent();
+  if (events[0] == WSA_INVALID_EVENT) {
     DEBUG_MSG("ERROR in WSACreateEvent(): %d\n", WSAGetLastError());
   }
-  if (num_events < 2) num_events = 2;
+
+  socks[0].sock = listen_sock;
+  socks[0].accept_sock = WSASocket(AF_INET, SOCK_STREAM, 0, NULL, 0, WSA_FLAG_OVERLAPPED);
+  socks[0].overlap = XMALLOC(sizeof(WSAOVERLAPPED));
+  memset(socks[0].overlap, 0, sizeof(WSAOVERLAPPED));
+  socks[0].overlap->hEvent = events[0];
+  if (num_sockets < 1) num_sockets = 1;
 
   DWORD bytes_read = 0;
   pAcceptEx(listen_sock,
-            socks[1].accept_sock,
-            accept_buffer,
+            socks[0].accept_sock,
+            socks[0].buf,
             0,
             sizeof(SOCKADDR_STORAGE)+16,
             sizeof(SOCKADDR_STORAGE)+16,
             &bytes_read,
-            socks[1].overlap
+            socks[0].overlap
             );
 }
 
-static void remove_event(int event_num)
+static void remove_socket(int sock_num)
 {
-  CLOSESOCK(socks[event_num].sock);
-  XFREE(socks[event_num].overlap);
-  CLOSEEVENT(events[event_num]);
+  CLOSESOCK(socks[sock_num].sock);
+  XFREE(socks[sock_num].overlap);
+  CLOSEEVENT(events[sock_num]);
   
-  for (int i = event_num; i < num_events-1; i++) {
+  for (int i = sock_num; i < num_sockets-1; i++) {
     events[i] = events[i+1];
     socks[i] = socks[i+1];
   }
-  num_events--;
+  num_sockets--;
 }
 
 static int wait_event(void)
 {
-  // Shuffle events (other than 0 and 1) to ensure
+  // Shuffle sockets (other than 0) to ensure
   // they all have a chance to be handled.
-  if (num_events > 3) {
-    WSAEVENT first_event = events[2];
-    struct SOCK_INFO first_sock = socks[2];
-    for (int i = 2; i < num_events-1; i++) {
+  if (num_sockets > 2) {
+    WSAEVENT first_event = events[1];
+    struct SOCK_INFO first_sock = socks[1];
+    for (int i = 2; i < num_sockets-1; i++) {
       events[i] = events[i+1];
       socks[i] = socks[i+1];
     }
-    events[num_events-1] = first_event;
-    socks[num_events-1] = first_sock;
+    events[num_sockets-1] = first_event;
+    socks[num_sockets-1] = first_sock;
   }
 
+  // add reconfiguration event to the list of events to be waited for
+  const int num_events = num_sockets + 1;
+  events[num_events-1] = reconfig_event;
+  
   DEBUG_MSG("-> waiting for %d events...\n", num_events);
   int ret = WSAWaitForMultipleEvents(num_events,
                                      events,
@@ -151,90 +157,101 @@ static int wait_event(void)
 
 static void handle_event(int event_num)
 {
-  DEBUG_MSG("-> handling event %d\n", event_num);
-  
-  WSAResetEvent(events[event_num]);  // mark event processed
-  if (event_num == 0) return;        // event 0 is reconfiguration
-  struct SOCK_INFO *cur_sock = &socks[event_num];
+  DEBUG_MSG("-> handling event %d (%s)\n", event_num, (event_num == num_sockets) ? "reconfiguration" : "socket");
+  WSAResetEvent(events[event_num]);       // mark event processed
+  if (event_num == num_sockets) return;   // it was a reconfiguration event
+
+  int sock_num = event_num;
+  struct SOCK_INFO *cur_sock = &socks[sock_num];
 
   // read event result
-  DWORD bytes = 0;
+  DWORD bytes_read = 0;
   DWORD flags = 0;
-  int ret = WSAGetOverlappedResult(cur_sock->sock,
-                                   cur_sock->overlap,
-                                   &bytes,
-                                   FALSE,
-                                   &flags);
+  int ret = WSAGetOverlappedResult(cur_sock->sock, cur_sock->overlap, &bytes_read, FALSE, &flags);
   if (ret == SOCKET_ERROR) {
-    DEBUG_MSG("ERROR in WSAGetOverlappedResult() for event %d: %d\n", event_num, WSAGetLastError());
-  }
-
-  // connected socket closed
-  if ((event_num != 1) && (bytes == 0)) {
-    CLOSESOCK(cur_sock->accept_sock);
-    XFREE(cur_sock->overlap);
-    CLOSEEVENT(events[event_num]);
-    remove_event(event_num);
-    return;
+    DWORD last_err = WSAGetLastError();
+    if (last_err != WSA_IO_PENDING) {
+      DEBUG_MSG("ERROR in WSAGetOverlappedResult() for socket %d: %d\n", sock_num, WSAGetLastError());
+      remove_socket(sock_num);
+    }
   }
 
   // new connection accepted
-  if (event_num == 1) {
-    if (num_events >= MAX_EVENTS) { // no space for new connections
+  if (sock_num == 0) {
+    if (num_sockets >= MAX_SOCKETS) { // no space for new connections
       CLOSESOCK(cur_sock->accept_sock);
       return;
     }
 
-    // add event/socket
-    int new_event_num = num_events++;
-    events[new_event_num] = cur_sock->overlap->hEvent;
-    struct SOCK_INFO *new_sock = &socks[new_event_num];
+    // prepare socket for use
+    setsockopt(cur_sock->accept_sock, SOL_SOCKET, SO_UPDATE_ACCEPT_CONTEXT, (char*)&cur_sock->sock, sizeof(cur_sock->sock));
+    shutdown(cur_sock->accept_sock, SD_SEND);  // we'll never send anything
+    
+    // add event and socket
+    int new_sock_num = num_sockets++;
+    events[new_sock_num] = cur_sock->overlap->hEvent;
+    struct SOCK_INFO *new_sock = &socks[new_sock_num];
     new_sock->sock        = cur_sock->accept_sock;
     new_sock->overlap     = cur_sock->overlap;
-    new_sock->wsa_buf.buf = new_sock->buf;
-    new_sock->wsa_buf.len = sizeof(new_sock->buf);
+    new_sock->buf_len     = 0;
     memset(new_sock->buf, 0, sizeof(new_sock->buf));
 
-    // start receiving data
-    flags = 0;
-    int ret = WSARecv(new_sock->sock,
-                      &new_sock->wsa_buf,
-                      1,
-                      &bytes,
-                      &flags,
-                      new_sock->overlap,
-                      NULL
-                      );
-    if (ret == SOCKET_ERROR) {
-      DWORD last_err = WSAGetLastError();
-      if (last_err != WSA_IO_PENDING) {
-        remove_event(new_event_num);
-        return;
-      }
-    }
+    // proceed with new socket
+    bytes_read = 0;
+    cur_sock = new_sock;
+    sock_num = new_sock_num;
+  }
+
+  // connected socket closed
+  if ((event_num != 0) && (bytes_read == 0)) {
+    cur_sock->buf[cur_sock->buf_len] = '\0';
+    msg_proc_func(cur_sock->buf);
+    remove_socket(sock_num);
+    return;
+  }
+  
+  // add received data
+  DEBUG_MSG("-> added %d bytes\n", (int) bytes_read);
+  cur_sock->buf_len += bytes_read;
+  if (cur_sock->buf_len+1 >= sizeof(cur_sock->buf)) {  // buffer full
+    cur_sock->buf[cur_sock->buf_len] = '\0';
+    msg_proc_func(cur_sock->buf);
+    remove_socket(sock_num);
     return;
   }
 
-  // data received
-  if (bytes >= sizeof(cur_sock->buf)) {
-    bytes = sizeof(cur_sock->buf)-1;
+  // receive more data
+  flags = 0;
+  cur_sock->wsa_buf.buf = cur_sock->buf + cur_sock->buf_len;
+  cur_sock->wsa_buf.len = sizeof(cur_sock->buf) - 1 - cur_sock->buf_len;
+  ret = WSARecv(cur_sock->sock, &cur_sock->wsa_buf, 1, NULL, &flags, cur_sock->overlap, NULL);
+  if (ret == SOCKET_ERROR) {
+    DWORD last_err = WSAGetLastError();
+    if (last_err != WSA_IO_PENDING) {
+      if (last_err == WSAECONNRESET) {
+        // connection closed by remote end
+        cur_sock->buf[cur_sock->buf_len] = '\0';
+        msg_proc_func(cur_sock->buf);
+      }
+      remove_socket(sock_num);
+    }
   }
-  cur_sock->buf[bytes] = '\0';
-  DEBUG_MSG("**** got data: '%.*s'\n", (int) bytes, cur_sock->buf);
-  msg_proc_func(cur_sock->buf);
-
-  // close connection
-  remove_event(event_num);
 }
 
 static DWORD WINAPI net_main(LPVOID lpParam)
 {
-  display_msg("Starting...");
+  // buffer size sanity check
+  if (sizeof(socks[0].buf) < 2*sizeof(SOCKADDR_STORAGE) + 32) {
+    display_msg("CONFIGURATION ERROR: buffer size is too small");
+    return 0;
+  }
   
+  display_msg("Starting...");
+
   WSADATA wsa_data;
   WSAStartup(MAKEWORD(2, 2), &wsa_data);
 
-  for (int i = 0; i < MAX_EVENTS; i++) {
+  for (int i = 0; i < MAX_SOCKETS; i++) {
     events[i] = WSA_INVALID_EVENT;
     socks[i].sock = -1;
     socks[i].accept_sock = -1;
@@ -249,35 +266,37 @@ static DWORD WINAPI net_main(LPVOID lpParam)
   if (get_acceptex_ptr(listen_sock) != 0) {
     CLOSESOCK(listen_sock);
     display_msg("NETWORK ERROR: can't access AcceptEx function");
-    return -1;
+    return 0;
   }
 
-  events[0] = WSACreateEvent();
-  num_events = 1;
+  reconfig_event = WSACreateEvent();
+  num_sockets = 0;
 
   while (1) {
     start_accept(listen_sock);
     DEBUG_MSG("-> created accept socked\n");
     
     int event_num = -1;
+    int reconfig_requested = 0;
     while (1) {
       event_num = wait_event();
       if (event_num < 0) break;
+      reconfig_requested = (event_num == num_sockets);
       handle_event(event_num);
-      if (event_num < 2) break;
+      if (event_num == 0 || reconfig_requested) break;
     }
 
     if (event_num < 0) {
-      display_msg("\r\nNETWORK ERROR: stopping");
-      // TODO: shutdown
-      continue;
+      display_msg("\r\nNETWORK ERROR");
+      CLOSESOCK(listen_sock);
+      return 0;
     }
     
     // reconfiguration event
-    if (event_num == 0) {
+    if (reconfig_requested) {
       // remove all events except the reconfiguration
-      while (num_events > 1) {
-        remove_event(num_events-1);
+      while (num_sockets > 1) {
+        remove_socket(num_sockets-1);
       }
 
       // close and re-create listening socked
@@ -307,5 +326,5 @@ void net_update_settings(int port)
 {
   display_msg("\r\nReconfiguring...");
   server_port = port;
-  WSASetEvent(events[0]);
+  WSASetEvent(reconfig_event);
 }
