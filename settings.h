@@ -8,6 +8,7 @@ struct SETTINGS {
 };
 
 void settings_read(struct SETTINGS *settings);
+void settings_write(struct SETTINGS *settings);
 int settings_show_dialog(HINSTANCE h_inst, HWND hwnd, struct SETTINGS *settings);
 
 #endif /* SETTINGS_H_FILE */
