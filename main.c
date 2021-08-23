@@ -7,13 +7,14 @@
 #include "util.h"
 #include "systray.h"
 #include "about.h"
+#include "settings.h"
 #include "resources.h"
 
 #define MAX_INPUT_SEQ_SIZE  100
-#define SERVER_PORT         5555
 
 static HINSTANCE h_instance;
 static HWND hwnd_main;
+static struct SETTINGS settings;
 
 void debug_msg(const char *fmt, ...)
 {
@@ -110,7 +111,13 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
       break;
 
     case IDM_ABOUT:
-      about_show(h_instance, hwnd);
+      about_show_dialog(h_instance, hwnd);
+      break;
+
+    case IDM_SETTINGS:
+      if (settings_show_dialog(h_instance, hwnd, &settings) != 0) {
+        net_update_settings(settings.port);
+      }
       break;
     }
     break;
@@ -188,14 +195,10 @@ int WINAPI WinMain(HINSTANCE h_inst, HINSTANCE h_prev_instance, LPSTR cmdline, i
   ShowWindow(hwnd_main, SW_HIDE);
   UpdateWindow(hwnd_main);
 
-  DWORD net_thread_id;
-  struct NET_MAIN_ARGS net_main_args = {
-    .server_port = SERVER_PORT,
-    .msg_proc = process_network_message,
-  };
-  HANDLE net_thread = CreateThread(NULL, 0, net_main, &net_main_args, 0, &net_thread_id);
-  if (net_thread == NULL) {
-    MessageBox(NULL, "Thread creation failed", "Error", MB_ICONEXCLAMATION | MB_OK);
+  settings_read(&settings);
+  
+  if (net_init(settings.port, process_network_message) != 0) {
+    MessageBox(NULL, "Error creating network thread", "Error", MB_ICONEXCLAMATION | MB_OK);
     return 0;
   }
   

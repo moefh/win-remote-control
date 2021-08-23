@@ -9,7 +9,6 @@ static INT_PTR CALLBACK DlgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
   switch (msg) {
   case WM_COMMAND:
     switch (LOWORD(wParam)) {
-    case IDC_ABOUT_CLOSE:
     case IDCANCEL:
     case IDCLOSE:
       EndDialog(hwnd, 0);
@@ -20,7 +19,7 @@ static INT_PTR CALLBACK DlgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
   return FALSE;
 }
 
-void about_show(HINSTANCE h_inst, HWND hwnd)
+void about_show_dialog(HINSTANCE h_inst, HWND hwnd)
 {
   DialogBox(h_inst, MAKEINTRESOURCE(IDD_ABOUT), hwnd, DlgProc);
 }
