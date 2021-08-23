@@ -3,8 +3,8 @@
 This is a small Windows program that sits on the systray accepting network connections on TCP port `5555`.
 Incoming connections with key names cause keyboard events to be sent to Windows.
 
-[Netcat](https://en.wikipedia.org/wiki/Netcat) is an easy way to send keys. If the IP address of
-your Windows PC is `192.179.1.20`, running
+To connect and send keys, use any program that can send a line of text over a TCP connection; [Ncat](https://nmap.org/ncat/) is a good option. If the IP address of
+your Windows PC is `192.168.1.20`, running
 
     echo "ALT+F4" | nc 192.168.1.20 5555
 
@@ -13,9 +13,9 @@ sequences are supported too, so if you leave a `notepad` window focused and
 
     echo "SHIFT+H E L L O COMMA SPACE W O R L D SHIFT+1" | nc 192.168.1.20 5555
 
-you'll see `Hello, world!` appear.
+the text `Hello, world!` will be sent to `notepad`.
 
-Single keys are sent with alternating press and release inputs, so sending "`A B`" will generate the sequence:
+Each individual key is sent with alternating press and release inputs, so sending "`A B`" will generate the sequence:
 - press `A`
 - release `A`
 - press `B`
@@ -43,4 +43,4 @@ To compile under MinGW-w64:
 - The TCP port `5555` is hard-coded.
 - There's a limit of 50 keys per connection.
 - Some key names (like "`COLON`") are specific to US keyboards and may have different effects if Windows has the keyboard configured for a different language (see [this page](https://docs.microsoft.com/en-us/windows/win32/inputdev/virtual-key-codes)).
-- No attempt at protecting from malicious or ill-behaved network clients is made. For example, a client that connects and never sends any data will prevent other connections.
+- The network code is very simplistic and assumes total cooperation from the client, there's no attempt at protecting from malicious or ill-behaved network clients. For example, a client that connects and never sends any data will block other connections.
