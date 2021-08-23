@@ -1,6 +1,6 @@
 # ![Icon](icon.ico) win-remote-control
 
-This is a small Windows program that sits on the systray accepting network connections on TCP port `5555`.
+This is a small Windows program that sits on the systray accepting network connections on TCP port `5555` (configurable).
 Incoming connections with key names cause keyboard events to be sent to Windows.
 
 To connect and send keys, use any program that can send a line of text over a TCP connection; [Ncat](https://nmap.org/ncat/) is a good option. If the IP address of
