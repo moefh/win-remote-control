@@ -3,8 +3,8 @@
 This is a small Windows program that sits on the systray accepting network connections on TCP port `5555` (configurable).
 Incoming connections with key names cause keyboard events to be sent to Windows.
 
-To connect and send keys, use any program that can send a line of text over a TCP connection; [Ncat](https://nmap.org/ncat/) is a good option. If the IP address of
-your Windows PC is `192.168.1.20`, running
+To connect and send keys, use any program that can send a line of text over a TCP connection; [Ncat](https://nmap.org/ncat/) is a 
+good option. If the IP address of your Windows PC is `192.168.1.20`, running
 
     echo "ALT+F4" | nc 192.168.1.20 5555
 
@@ -41,4 +41,11 @@ To compile under MinGW-w64:
 ## Limitations
 
 - There's a limit of 50 keys per connection.
-- Some key names (like "`COLON`") are specific to US keyboards and may have different effects if Windows has the keyboard configured for a different language (see [this page](https://docs.microsoft.com/en-us/windows/win32/inputdev/virtual-key-codes)).
+
+- Some key names (like "`COLON`") are specific to US keyboards and may have different effects if Windows has the keyboard configured 
+for a different language (see [this page](https://docs.microsoft.com/en-us/windows/win32/inputdev/virtual-key-codes)).
+
+## Use with ESP32
+
+This project was created to be used with an ESP32; see the [esp32-remote-control](https://github.com/moefh/esp32-remote-control) 
+repository for details on how to use and ESP32 to send keys to your Windows PC via WiFi when a button is pressed.
