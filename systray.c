@@ -6,6 +6,14 @@
 #include "resources.h"
 #include "util.h"
 
+#ifndef NIF_SHOWTIP
+#define NIF_SHOWTIP 0x00000080
+#endif
+
+#ifndef NOTIFYICON_VERSION_4
+#define NOTIFYICON_VERSION_4 4
+#endif
+
 void systray_init(HINSTANCE h_inst, HWND hwnd)
 {
   NOTIFYICONDATA nid;
